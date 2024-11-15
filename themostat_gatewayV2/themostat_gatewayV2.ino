@@ -1,6 +1,6 @@
 
-boolean printDiagnostics0 = true;
-boolean printDiagnostics1 = true;
+boolean l_printDiagnostics = true;
+boolean m_printDiagnostics = true;
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "CRC16.h"
@@ -22,22 +22,21 @@ boolean printDiagnostics1 = true;
 #define SIZE_OF_LORA_DATA 16
 
 
-WiFiClient    g_wifiClient;
-PubSubClient  g_mqttClient(g_wifiClient);
+WiFiClient    m_wifiClient;
+PubSubClient  m_mqttClient(m_wifiClient);
 
 #include "creds.h"
-String        g_mqttClientId = "";
-unsigned long g_mqttLastTry = 0;
-int           g_noMqttErrors = 0; 
-boolean       g_commLEDState = false;
-boolean       g_publishNow = false;
-unsigned long g_lastMsgTime = 0;
-unsigned long lastPublishTime;
-unsigned long publishInterval = 4000;
+String        m_mqttClientId = "";
+unsigned long m_mqttLastTry = 0;
+int           m_noMqttErrors = 0; 
+boolean       m_commLEDState = false;
+boolean       m_publishNow = false;
+unsigned long m_lastMsgTime = 0;
+uint8_t       m_mqttDatabuffer[SIZE_OF_LORA_NODE];
 
-CRC16   crc;
-const long loraFreq = 868E6;  // LoRa Frequency
-int16_t igatewayAddr = 10;
+CRC16   l_crc;
+const long l_loraFreq = 868E6;  // LoRa Frequency
+int16_t l_igatewayAddr = 10;
 
 struct LoraDataHeader
 {
@@ -58,97 +57,96 @@ union LoraNode
   };
   uint8_t buffer[SIZE_OF_LORA_NODE];
 };
-uint8_t sizeOfLoraNode = SIZE_OF_LORA_NODE;
-uint8_t g_mqttDatabuffer[SIZE_OF_LORA_NODE];
-uint8_t loraDatabuffer[SIZE_OF_LORA_NODE];
+uint8_t l_sizeOfLoraNode = SIZE_OF_LORA_NODE;
+uint8_t l_loraDatabuffer[SIZE_OF_LORA_NODE];
 
-void mqttCubeCallback(char* topic, byte* payload, unsigned int length) 
+void m_mqttCubeCallback(char* topic, byte* payload, unsigned int length) 
 {
   // handle message arrived
 }
-void setCommLED(boolean ledState)
+void m_setCommLED(boolean ledState)
 {
-  g_commLEDState = ledState;
-  digitalWrite(COMPIN, g_commLEDState);
+  m_commLEDState = ledState;
+  digitalWrite(COMPIN, m_commLEDState);
 }
-void blinkCommLED(int nblink, int imilli)
+void m_blinkCommLED(int nblink, int imilli)
 {
-    setCommLED(false);
+    m_setCommLED(false);
     for (int ii = 0; ii < nblink; ++ii) 
     {
-      setCommLED(!g_commLEDState);
+      m_setCommLED(!m_commLEDState);
       delay(imilli);
     }
-    setCommLED(false);
+    m_setCommLED(false);
 }
-void rebootPico(String warning)
+void m_rebootPico(String warning)
 {
-    if (printDiagnostics1) Serial.println(warning);
-    blinkCommLED(100, 100);
+    if (m_printDiagnostics) Serial.println(warning);
+    m_blinkCommLED(100, 100);
     rp2040.reboot();
 }
 
-boolean mqttConnect() 
+boolean m_mqttConnect() 
 {
   if ( WiFi.status() != WL_CONNECTED)
   {
-    rebootPico("Unable to connect to WIFI network, rebooting in 10 seconds...");
+    m_rebootPico("Unable to connect to WIFI network, rebooting in 10 seconds...");
   }
   unsigned long now = millis();
-  boolean connected = g_mqttClient.connected();
+  boolean connected = m_mqttClient.connected();
   if (connected) return true;
-  if ((now - g_mqttLastTry) < MQTT_RETRY) return false;
+  if ((now - m_mqttLastTry) < MQTT_RETRY) return false;
 
-  if (printDiagnostics1) Serial.print("Attempting MQTT connection using ID...");
-  if (printDiagnostics1)  Serial.println(g_mqttClientId);
-  connected = g_mqttClient.connect(g_mqttClientId.c_str(),g_mqttUsername.c_str(), g_mqttPassword.c_str());
-  g_mqttLastTry = now;
+  if (m_printDiagnostics) Serial.print("Attempting MQTT connection using ID...");
+  if (m_printDiagnostics)  Serial.println(m_mqttClientId);
+  connected = m_mqttClient.connect(m_mqttClientId.c_str(),m_mqttUsername.c_str(), m_mqttPassword.c_str());
+  m_mqttLastTry = now;
   if (connected) 
   {
-    if (printDiagnostics1) Serial.println("...connected");
-    g_mqttClient.subscribe(g_mqttSubscribeTopic.c_str());
-    g_noMqttErrors = 0;
+    if (m_printDiagnostics) Serial.println("...connected");
+    m_mqttClient.subscribe(m_mqttSubscribeTopic.c_str());
+    m_noMqttErrors = 0;
     return true;
   } 
-  int mqttState = g_mqttClient.state();
-  if (printDiagnostics1) Serial.print(" failed, rc=");
-  if (printDiagnostics1) Serial.print(mqttState);
-  if (printDiagnostics1) Serial.print(": ");
+  int mqttState = m_mqttClient.state();
+  if (m_printDiagnostics) Serial.print(" failed, rc=");
+  if (m_printDiagnostics) Serial.print(mqttState);
+  if (m_printDiagnostics) Serial.print(": ");
 
   switch (mqttState) 
   {
     case -4:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECTION_TIMEOUT");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECTION_TIMEOUT");
       break;
     case -3:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECTION_LOST");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECTION_LOST");
       break;
     case -2:
-      g_noMqttErrors = g_noMqttErrors + 1;
-      if (printDiagnostics1) Serial.print("Number of MQTT connection attempts: ");
-      if (printDiagnostics1) Serial.print(g_noMqttErrors);
-      if (g_noMqttErrors > MAX_NO_MQTT_ERRORS) rebootPico("Too may MQTT reconnect attempts. Rebooting...");
+      m_noMqttErrors = m_noMqttErrors + 1;
+      if (m_printDiagnostics) Serial.print("Number of MQTT connection attempts: ");
+      if (m_printDiagnostics) Serial.print(m_noMqttErrors);
+      if (m_noMqttErrors > MAX_NO_MQTT_ERRORS) m_rebootPico("Too may MQTT reconnect attempts. Rebooting...");
       break;
     case -1:
-      if (printDiagnostics1) Serial.println("MQTT_DISCONNECTED");
+      if (m_printDiagnostics) Serial.println("MQTT_DISCONNECTED");
       break;
     case 0:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECTED");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECTED");
       break;
     case 1:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECT_BAD_PROTOCOL");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECT_BAD_PROTOCOL");
       break;
     case 2:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECT_BAD_CLIENT_ID");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECT_BAD_CLIENT_ID");
       break;
     case 3:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECT_UNAVAILABLE");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECT_UNAVAILABLE");
       break;
     case 4:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECT_BAD_CREDENTIALS");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECT_BAD_CREDENTIALS");
       break;
     case 5:
-      if (printDiagnostics1) Serial.println("MQTT_CONNECT_UNAUTHORIZED");
+      if (m_printDiagnostics) Serial.println("MQTT_CONNECT_UNAUTHORIZED");
       break;
     default:
       break;
@@ -179,73 +177,74 @@ void onReceive(int packetSize)
 {
   uint8_t numBytes = 0;
   LoraNode loraNode;
-  if (printDiagnostics0) Serial.print("Received LoRa data at: ");
-  if (printDiagnostics0) Serial.println(millis());
+  if (l_printDiagnostics) Serial.print("Received LoRa data at: ");
+  if (l_printDiagnostics) Serial.println(millis());
   while (LoRa.available() )
   {
-    numBytes = LoRa.readBytes(loraNode.buffer, sizeOfLoraNode);
+    numBytes = LoRa.readBytes(loraNode.buffer, l_sizeOfLoraNode);
   }
-  if (numBytes != sizeOfLoraNode)
+  if (numBytes != l_sizeOfLoraNode)
   {
-    if (printDiagnostics0) Serial.println("LoRa bytes do not match");
+    if (l_printDiagnostics) Serial.println("LoRa bytes do not match");
     return;
   }
   
-  crc.restart();
-  for (int ii = 2; ii <sizeOfLoraNode; ii++)
+  l_crc.restart();
+  for (int ii = 2; ii < l_sizeOfLoraNode; ii++)
   {
-    crc.add(loraNode.buffer[ii]);
+    l_crc.add(loraNode.buffer[ii]);
   }
-  uint16_t crcCalc = crc.calc();
+  uint16_t crcCalc = l_crc.calc();
   if (crcCalc != loraNode.header.icrc) 
   {
-    if (printDiagnostics0) Serial.println("LoRa CRC does not match");
+    if (l_printDiagnostics) Serial.println("LoRa CRC does not match");
     return;
   }
 
-  if (loraNode.header.igatewayAddr != igatewayAddr) 
+  if (loraNode.header.igatewayAddr != l_igatewayAddr) 
   {
-    if (printDiagnostics0) Serial.println("LoRa Gateway address do not match");
+    if (l_printDiagnostics) Serial.println("LoRa Gateway address do not match");
     return;
   }
   
-  if (printDiagnostics0)
+  if (l_printDiagnostics)
   {
     Serial.print("Gateway Receive: ");
     Serial.println(numBytes);
     Serial.print("icrc           : ");
     Serial.println(loraNode.header.icrc);
   }
-  if (!g_publishNow)
+  if (!m_publishNow)
   {
-    if (printDiagnostics0) Serial.println("Sending data to MQTT");
-    for (int ii = 0; ii < SIZE_OF_LORA_NODE; ++ii) loraDatabuffer[ii] = loraNode.buffer[ii];
-    g_publishNow = true;
+    if (l_printDiagnostics) Serial.println("Sending data to MQTT");
+    for (int ii = 0; ii < SIZE_OF_LORA_NODE; ++ii) l_loraDatabuffer[ii] = loraNode.buffer[ii];
+    m_publishNow = true;
   }
   else
   {
-    if (printDiagnostics0) Serial.println("MQTT Core busy");
+    if (l_printDiagnostics) Serial.println("MQTT Core busy");
     
   }
-  if (printDiagnostics0) Serial.println("");
+  if (l_printDiagnostics) Serial.println("");
 }
 
 void onTxDone() 
 {
-  if (printDiagnostics0) Serial.println("TxDone");
+  if (l_printDiagnostics) Serial.println("TxDone");
   LoRa_rxMode();
 }
-void setupLoRa()
+void setupLoRa(int16_t igatewayAddr)
 {
   LoRa.setPins(CHSPIN, RSTPIN, IRQPIN);
+  l_igatewayAddr = igatewayAddr;
 
-  if (!LoRa.begin(loraFreq)) 
+  if (!LoRa.begin(l_loraFreq)) 
   {
-    if (printDiagnostics0) Serial.println("LoRa init failed. Check your connections.");
+    if (l_printDiagnostics) Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }
 
-  if (printDiagnostics0)
+  if (l_printDiagnostics)
   {
     Serial.println("LoRa init succeeded.");
     Serial.println();
@@ -263,13 +262,13 @@ void setupLoRa()
 }
 void setup()
 {
-  g_publishNow = true;
+  m_publishNow = true;
   pinMode(COMPIN, OUTPUT);
-  setCommLED(false);
-  if (printDiagnostics1) Serial.begin(115200);
-  blinkCommLED(20, 500);
+  m_setCommLED(false);
+  if (m_printDiagnostics) Serial.begin(115200);
+  m_blinkCommLED(20, 500);
   
-  if (printDiagnostics1) Serial.println("Reading creds.txt file");
+  if (m_printDiagnostics) Serial.println("Reading creds.txt file");
 
 /*
   LittleFS.begin();
@@ -285,60 +284,60 @@ void setup()
         startPos = data.indexOf("{") + 1;
         stopPos = data.indexOf("}");
         lines[ii] = data.substring(startPos,stopPos);
-        if (printDiagnostics1) Serial.println(lines[ii]);
+        if (m_printDiagnostics) Serial.println(lines[ii]);
         data = data.substring(stopPos + 1);
       }
-      g_ssid               = lines[0];
-      g_wifiPassword       = lines[1];
-      g_mqttServer         = lines[2];
-      g_mqttUsername       = lines[3];
-      g_mqttPassword       = lines[4];
-      g_box                = lines[5];
-      g_trayType           = lines[6];
-      g_trayName           = lines[7];
-      g_cubeType           = lines[8];
+      m_ssid               = lines[0];
+      m_wifiPassword       = lines[1];
+     m_mqttServer         = lines[2];
+      m_mqttUsername       = lines[3];
+      m_mqttPassword       = lines[4];
+      m_box                = lines[5];
+      m_trayType           = lines[6];
+      m_trayName           = lines[7];
+      m_cubeType           = lines[8];
       file.close();
   }
   else
   {
-    rebootPico("Unable to read config file, rebooting in 10 seconds...");
+    m_rebootPico("Unable to read config file, rebooting in 10 seconds...");
   }
   LittleFS.end();
 */
-  if (printDiagnostics1)
+  if (m_printDiagnostics)
   {
     Serial.println();
     Serial.println();
     Serial.println();
     Serial.print("Connecting to ");
-    Serial.println(g_ssid);
+    Serial.println(m_ssid);
   
     Serial.print("SSID: ");
-    Serial.println(g_ssid);
+    Serial.println(m_ssid);
     Serial.print("Wifi Password: ");
-    Serial.println(g_wifiPassword);
+    Serial.println(m_wifiPassword);
   }
   WiFi.mode(WIFI_STA);
 
   int itry = 0;
   while ((WiFi.status() != WL_CONNECTED) && (itry < 5))
   {
-    setCommLED(!g_commLEDState);
-    if (printDiagnostics1) Serial.print("Attempt: ");
-    if (printDiagnostics1) Serial.println(itry);
-    WiFi.begin(g_ssid.c_str(), g_wifiPassword.c_str()); 
+    m_setCommLED(!m_commLEDState);
+    if (m_printDiagnostics) Serial.print("Attempt: ");
+    if (m_printDiagnostics) Serial.println(itry);
+    WiFi.begin(m_ssid.c_str(), m_wifiPassword.c_str()); 
     delay(10000);
     itry = itry + 1;
   }
-  setCommLED(false);
+  m_setCommLED(false);
 
-  if (itry == 5) rebootPico("Unable to connect to WIFI network, rebooting in 10 seconds...");
+  if (itry == 5) m_rebootPico("Unable to connect to WIFI network, rebooting in 10 seconds...");
 
-  if (printDiagnostics1) Serial.println("");
-  if (printDiagnostics1) Serial.println("WiFi connected");
-  if (printDiagnostics1) Serial.println("IP address: ");
-  if (printDiagnostics1) Serial.println(WiFi.localIP());
-  if (printDiagnostics1)
+  if (m_printDiagnostics) Serial.println("");
+  if (m_printDiagnostics) Serial.println("WiFi connected");
+  if (m_printDiagnostics) Serial.println("IP address: ");
+  if (m_printDiagnostics) Serial.println(WiFi.localIP());
+  if (m_printDiagnostics)
   {
     byte mac[6];
     WiFi.macAddress(mac);
@@ -357,35 +356,35 @@ void setup()
   }
 
   delay(2000);
-  blinkCommLED(50, 40);
+  m_blinkCommLED(50, 40);
   
-  g_mqttClient.setServer(g_mqttServer.c_str(), 1883);
-  g_mqttClient.setCallback(mqttCubeCallback);
-  g_mqttClientId = g_box + "_" + g_trayType + "_" + g_trayName + "_" + g_cubeType;
-  g_mqttSubscribeTopic = g_box + "/" + g_cubeType + "/" + g_trayType + "/" + g_trayName + "/setting";
-  g_mqttPublishTopic   = g_box + "/" + g_cubeType + "/" + g_trayType + "/" + g_trayName + "/reading";
-  g_mqttClient.setKeepAlive(MQTT_KEEP_ALIVE);
-  g_mqttClient.setSocketTimeout(MQTT_SOCKETTIMEOUT);
-  g_publishNow = false;
-  setupLoRa();  
+  m_mqttClient.setServer(m_mqttServer.c_str(), 1883);
+  m_mqttClient.setCallback(m_mqttCubeCallback);
+  m_mqttClientId = m_box + "_" + m_trayType + "_" + m_trayName + "_" + m_cubeType;
+  m_mqttSubscribeTopic = m_box + "/" + m_cubeType + "/" + m_trayType + "/" + m_trayName + "/setting";
+  m_mqttPublishTopic   = m_box + "/" + m_cubeType + "/" + m_trayType + "/" + m_trayName + "/reading";
+  m_mqttClient.setKeepAlive(MQTT_KEEP_ALIVE);
+  m_mqttClient.setSocketTimeout(MQTT_SOCKETTIMEOUT);
+  m_publishNow = false;
+  setupLoRa((int16_t) m_trayName.toInt());  
 }
 
 void loop()
 {
   unsigned long now = millis();
-  g_mqttClient.loop();
-  mqttConnect();
-  if (g_publishNow)
+  m_mqttClient.loop();
+  m_mqttConnect();
+  if (m_publishNow)
   {
-    setCommLED(true);
-    g_lastMsgTime = now;
-    for (int ii = 0; ii < SIZE_OF_LORA_NODE; ++ii) g_mqttDatabuffer[ii] = loraDatabuffer[ii];
-    g_mqttClient.publish(g_mqttPublishTopic.c_str(), g_mqttDatabuffer, SIZE_OF_LORA_NODE);
-    g_publishNow = false;
+    m_setCommLED(true);
+    m_lastMsgTime = now;
+    for (int ii = 0; ii < SIZE_OF_LORA_NODE; ++ii) m_mqttDatabuffer[ii] = l_loraDatabuffer[ii];
+    m_mqttClient.publish(m_mqttPublishTopic.c_str(), m_mqttDatabuffer, SIZE_OF_LORA_NODE);
+    m_publishNow = false;
   }
-  if (g_commLEDState)
+  if (m_commLEDState)
   {
-    if ((now - g_lastMsgTime) > MQTT_LED_FLASH_MS) setCommLED(false);  
+    if ((now - m_lastMsgTime) > MQTT_LED_FLASH_MS) m_setCommLED(false);  
   }
 
 }
