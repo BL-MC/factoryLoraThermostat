@@ -1,0 +1,10 @@
+{Blinky-Lite}
+{SwedishChef}
+{192.168.0.101}
+{blinky-lite-box-01}
+{areallybadpassword}
+{blinky-lite-box-01}
+{lora-gateway}
+{10}
+{cube}
+
