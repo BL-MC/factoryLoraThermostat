@@ -44,11 +44,11 @@ void LoRa_txMode()
   LoRa.enableInvertIQ();                // active invert I and Q signals
 }
 
-void LoRa_sendMessage(String message) 
+void LoRa_sendMessage(uint8_t *buffer, uint8_t size) 
 {
   LoRa_txMode();                        // set tx mode
   LoRa.beginPacket();                   // start packet
-  LoRa.print(message);                  // add payload
+  LoRa.write(buffer, (size_t) size);    // add payload
   LoRa.endPacket(true);                 // finish packet and send it
 }
 
@@ -139,4 +139,23 @@ void setupLoRa(int16_t igatewayAddr)
   LoRa_rxMode();
 
 }
+void l_loop(unsigned long now, uint8_t* mqttDatabuffer, uint8_t sizeOfMqttData)
+{
+  if (l_publishNow)
+  {
+    LoraNode loraNode;
+    for (int ii = 0; ii < sizeOfMqttData; ++ii) loraNode.buffer[ii] = mqttDatabuffer[ii];
+    l_crc.restart();
+    for (int ii = 2; ii < l_sizeOfLoraNode; ii++)
+    {
+      l_crc.add(loraNode.buffer[ii]);
+    }
+    uint16_t crcCalc = l_crc.calc();
+    loraNode.header.icrc = l_crc.calc();
+    LoRa_sendMessage(loraNode.buffer, l_sizeOfLoraNode);
+    if (l_printDiagnostics) Serial.println("Sending data to LoRa Node");
 
+    l_publishNow = false;
+  }
+  
+}

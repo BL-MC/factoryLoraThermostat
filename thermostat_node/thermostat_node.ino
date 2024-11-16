@@ -1,6 +1,6 @@
-boolean printDiagnostics = true;
+boolean printDiagnostics = false;
 
-#define NODEADDRESS 10
+#define NODEADDRESS 11
 #define GATEWAYADDRESS 10
 #define DHTPIN 13
 #define REDPIN 10
@@ -79,7 +79,7 @@ void setup()
   digitalWrite(RLYPIN, LOW); 
   dht.begin();
 
-  loraNode.header.istate = 0;
+  loraNode.header.istate = 1;
   loraNode.header.inewData = 0;
   loraNode.header.inodeAddr = NODEADDRESS;
   loraNode.header.igatewayAddr = GATEWAYADDRESS;
@@ -237,15 +237,63 @@ void LoRa_sendMessage(uint8_t *buffer, uint8_t size)
 
 void onReceive(int packetSize) 
 {
-  String message = "";
-
-  while (LoRa.available()) 
+  uint8_t numBytes = 0;
+  LoraNode loraNodeReceive;
+  
+  if (printDiagnostics) Serial.print("Received LoRa data at: ");
+  if (printDiagnostics) Serial.println(millis());
+  while (LoRa.available() )
   {
-    message += (char)LoRa.read();
+    numBytes = LoRa.readBytes(loraNodeReceive.buffer, sizeOfLoraNode);
+  }
+  if (numBytes != sizeOfLoraNode)
+  {
+    if (printDiagnostics) Serial.println("LoRa bytes do not match");
+    return;
+  }
+  
+  crc.restart();
+  for (int ii = 2; ii < sizeOfLoraNode; ii++)
+  {
+    crc.add(loraNodeReceive.buffer[ii]);
+  }
+  uint16_t crcCalc = crc.calc();
+  if (crcCalc != loraNodeReceive.header.icrc) 
+  {
+    if (printDiagnostics) Serial.println("LoRa CRC does not match");
+    return;
   }
 
-  if (printDiagnostics) Serial.print("Node Receive: ");
-  if (printDiagnostics) Serial.println(message);
+  if (loraNodeReceive.header.igatewayAddr != GATEWAYADDRESS) 
+  {
+    if (printDiagnostics) Serial.println("LoRa Gateway address do not match");
+    return;
+  }
+  
+  if (loraNodeReceive.header.inodeAddr != NODEADDRESS) 
+  {
+    if (printDiagnostics) Serial.println("LoRa Node address do not match");
+    return;
+  }
+
+  if (printDiagnostics)
+  {
+    Serial.print("Node Receive: ");
+    Serial.println(numBytes);
+    Serial.print("icrc           : ");
+    Serial.println(loraNodeReceive.header.icrc);
+  }
+  if (loraNode.header.istate == 0) loraNode.data.imode = loraNodeReceive.data.imode;
+  loraNode.data.ipubInterval    = loraNodeReceive.data.ipubInterval;
+  loraNode.data.isetTemp        = loraNodeReceive.data.isetTemp;
+  loraNode.data.iwindowTemp     = loraNodeReceive.data.iwindowTemp;
+  loraNode.data.irelayInterval  = loraNodeReceive.data.irelayInterval;
+  loraNode.header.istate = 0;
+
+  
+  publishInterval = loraNode.data.ipubInterval * 100;
+  relayInterval = loraNode.data.irelayInterval * 100;
+  
 }
 
 void onTxDone() 

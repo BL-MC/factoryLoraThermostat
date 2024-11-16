@@ -1,6 +1,8 @@
 
-boolean l_printDiagnostics = true;
-boolean m_printDiagnostics = true;
+boolean l_printDiagnostics = false;
+boolean m_printDiagnostics = false;
+boolean m_publishNow = false;
+boolean l_publishNow = false;
 
 #include "creds.h"
 #include "mqttRoutines.h"
@@ -17,4 +19,5 @@ void loop()
 {
   unsigned long now = millis();
   m_loop(now, l_loraDatabuffer, l_sizeOfLoraNode);
+  l_loop(now, m_mqttDatabuffer, m_sizeOfMqttData);
 }

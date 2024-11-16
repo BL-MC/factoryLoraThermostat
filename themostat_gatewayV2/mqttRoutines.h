@@ -20,12 +20,36 @@ String        m_mqttClientId = "";
 unsigned long m_mqttLastTry = 0;
 int           m_noMqttErrors = 0; 
 boolean       m_commLEDState = false;
-boolean       m_publishNow = false;
 unsigned long m_lastMsgTime = 0;
+uint8_t       m_sizeOfMqttData = SIZE_OF_LORA_NODE;
+uint8_t       m_mqttDatabuffer[SIZE_OF_LORA_NODE];
 
 void m_mqttCubeCallback(char* topic, byte* payload, unsigned int length) 
 {
-  // handle message arrived
+  if (m_printDiagnostics)
+  {
+    Serial.println("Setting Received.");
+    Serial.print("Subscribe topic: ");
+    Serial.println(topic);
+    Serial.print("Buffer length  : ");
+    Serial.println(length);
+  }
+  if (length != SIZE_OF_LORA_NODE)
+  {
+    if (m_printDiagnostics) Serial.println("Setting buffer length does not match LoRa length");
+    return;
+  }
+  if (!l_publishNow)
+  {
+    for (int ii = 0; ii < length; ++ii) m_mqttDatabuffer[ii] = payload[ii];
+    l_publishNow = true;
+  }
+  else
+  {
+    if (m_printDiagnostics) Serial.println("LoRa Core busy");
+    
+  }
+  if (m_printDiagnostics) Serial.println("");
 }
 void m_setCommLED(boolean ledState)
 {
