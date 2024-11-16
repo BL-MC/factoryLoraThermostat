@@ -1,6 +1,6 @@
 boolean printDiagnostics = false;
 
-#define NODEADDRESS 11
+#define NODEADDRESS 10
 #define GATEWAYADDRESS 10
 #define DHTPIN 13
 #define REDPIN 10
@@ -169,11 +169,13 @@ void loop()
     {
       digitalWrite(RLYPIN, LOW);
       digitalWrite(REDPIN, LOW);
+      loraNode.data.irelay = 0;
     }
     if (loraNode.data.imode == 1) 
     {
       digitalWrite(RLYPIN, HIGH);
       digitalWrite(REDPIN, HIGH);
+      loraNode.data.irelay = 1;
     }
     if (loraNode.data.imode == 2)
     {
