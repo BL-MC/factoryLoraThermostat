@@ -1,6 +1,6 @@
 boolean printDiagnostics = false;
 
-#define NODEADDRESS 10
+#define NODEADDRESS 11
 #define GATEWAYADDRESS 10
 #define DHTPIN 13
 #define REDPIN 10
@@ -25,7 +25,11 @@ unsigned long lastRelayTime;
 unsigned long relayInterval = 20000;
 unsigned long lastGreenTime;
 unsigned long greenInterval = 200;
-boolean greenLed = true;
+boolean greenLed = false;
+unsigned long yellowInterval = 1000;
+unsigned long lastYellowTime = 200;
+boolean yellowLed = false;
+boolean redLed = false;
 const long loraFreq = 868E6;  // LoRa Frequency
 
 
@@ -64,17 +68,29 @@ uint8_t sizeOfLoraNode = 28;
 
 void setup() 
 {
-  if (printDiagnostics) Serial.begin(9600);
-  delay(5000);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(REDPIN, OUTPUT);
   pinMode(YELPIN, OUTPUT);
   pinMode(GRNPIN, OUTPUT);
   pinMode(RLYPIN, OUTPUT);
-
+  if (printDiagnostics) Serial.begin(9600);
+  for (int ii = 0; ii < 25; ++ii)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);   
+    digitalWrite(REDPIN, HIGH);   
+    digitalWrite(YELPIN, HIGH);   
+    digitalWrite(GRNPIN, HIGH);   
+    delay(100);
+    digitalWrite(LED_BUILTIN, LOW);   
+    digitalWrite(REDPIN, LOW);   
+    digitalWrite(YELPIN, LOW);   
+    digitalWrite(GRNPIN, LOW);   
+    delay(100);
+  }
+  delay(1000);
   digitalWrite(LED_BUILTIN, LOW);   
   digitalWrite(REDPIN, LOW);   
-  digitalWrite(YELPIN, LOW);   
+  digitalWrite(YELPIN, false);   
   digitalWrite(GRNPIN, false);   
   digitalWrite(RLYPIN, LOW); 
   dht.begin();
@@ -139,6 +155,14 @@ void loop()
       digitalWrite(GRNPIN, greenLed);
     }
   }
+  if (yellowLed)
+  {
+    if ((nowTime - lastYellowTime) > yellowInterval)
+    {
+      yellowLed = false;
+      digitalWrite(YELPIN, yellowLed);
+    }
+  }
   if ((nowTime - lastPublishTime) > publishInterval)
   {
     lastPublishTime = nowTime;
@@ -148,7 +172,7 @@ void loop()
     {
       if (printDiagnostics) Serial.println(F("Failed to read from DHT sensor!"));
       humid = 0;
-      temp = 0;
+      temp = -20;
     }
     else
     {
@@ -180,7 +204,7 @@ void loop()
     if (loraNode.data.imode == 2)
     {
       int16_t irelay = 0;
-      if ((nowTime - lastRelayTime) > relayInterval)
+      if (((nowTime - lastRelayTime) > relayInterval) && (humid > 0))
       {
         if (loraNode.data.itemp > (loraNode.data.isetTemp + loraNode.data.iwindowTemp)) irelay = 0;
         if (loraNode.data.itemp < (loraNode.data.isetTemp - loraNode.data.iwindowTemp)) irelay = 1;
@@ -212,6 +236,7 @@ void loop()
     greenLed = true;
     digitalWrite(GRNPIN, greenLed);
     lastGreenTime = nowTime;
+    lastYellowTime = nowTime;
     LoRa_sendMessage(loraNode.buffer, sizeOfLoraNode);
     
   }
@@ -295,6 +320,11 @@ void onReceive(int packetSize)
   
   publishInterval = loraNode.data.ipubInterval * 100;
   relayInterval = loraNode.data.irelayInterval * 100;
+  lastPublishTime = 1;
+  
+  yellowLed = true;
+  digitalWrite(YELPIN, yellowLed);
+  lastYellowTime = millis();
   
 }
 
