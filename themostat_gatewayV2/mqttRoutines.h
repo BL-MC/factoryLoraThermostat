@@ -2,7 +2,7 @@
 #include <PubSubClient.h>
 //#include "LittleFS.h"
 
-#define COMPIN LED_BUILTIN
+#define COMPIN             12
 #define MQTT_RETRY            3000
 #define MAX_NO_MQTT_ERRORS    5
 #define MAX_NO_CONNECTION_ATTEMPTS 5
