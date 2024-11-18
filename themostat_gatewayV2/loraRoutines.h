@@ -5,6 +5,9 @@
 #define CHSPIN 17          // LoRa radio chip select
 #define RSTPIN 14          // LoRa radio reset
 #define IRQPIN 15          // LoRa radio IRQ
+#define LORSBW 62e3
+#define LORSPF 9
+#define LORFRQ 868E6
 
 CRC16   l_crc;
 const long l_loraFreq = 868E6;  // LoRa Frequency
@@ -18,6 +21,8 @@ struct LoraDataHeader
   int16_t igatewayAddr;
   int16_t iwatchdog;
   int16_t inewData;  
+  int16_t irssi;  
+  int16_t isnr;  
 }; 
 
 union LoraNode
@@ -85,11 +90,17 @@ void onReceive(int packetSize)
     if (l_printDiagnostics) Serial.println("LoRa Gateway address do not match");
     return;
   }
-  
+  loraNode.header.irssi = (int16_t)   LoRa.packetRssi();
+  loraNode.header.isnr  = (int16_t)  (LoRa.packetSnr() * 100);
   if (l_printDiagnostics)
   {
     Serial.print("Gateway Receive: ");
     Serial.println(numBytes);
+    Serial.print("packetRssi     : ");
+    Serial.println(loraNode.header.irssi);
+    Serial.print("packetSnr      : ");
+    float fsnr = ((float)loraNode.header.isnr) / 100;
+    Serial.println(fsnr);
     Serial.print("icrc           : ");
     Serial.println(loraNode.header.icrc);
   }
@@ -115,6 +126,7 @@ void onTxDone()
 void setupLoRa(int16_t igatewayAddr)
 {
   LoRa.setPins(CHSPIN, RSTPIN, IRQPIN);
+
   l_igatewayAddr = igatewayAddr;
 
   if (!LoRa.begin(l_loraFreq)) 
@@ -122,6 +134,8 @@ void setupLoRa(int16_t igatewayAddr)
     if (l_printDiagnostics) Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }
+  LoRa.setSpreadingFactor(LORSPF);
+  LoRa.setSignalBandwidth(LORSBW);
 
   if (l_printDiagnostics)
   {

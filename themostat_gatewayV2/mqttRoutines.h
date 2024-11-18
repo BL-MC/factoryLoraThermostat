@@ -9,7 +9,7 @@
 #define MQTT_KEEP_ALIVE    8
 #define MQTT_SOCKETTIMEOUT 4
 #define MQTT_LED_FLASH_MS 10
-#define SIZE_OF_LORA_NODE 28
+#define SIZE_OF_LORA_NODE 32
 #define SIZE_OF_LORA_DATA 16
 
 

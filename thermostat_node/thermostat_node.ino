@@ -1,6 +1,6 @@
 boolean printDiagnostics = false;
 
-#define NODEADDRESS 11
+#define NODEADDRESS 10
 #define GATEWAYADDRESS 10
 #define DHTPIN 13
 #define REDPIN 10
@@ -11,6 +11,9 @@ boolean printDiagnostics = false;
 #define CHSPIN 17          // LoRa radio chip select
 #define RSTPIN 14       // LoRa radio reset
 #define IRQPIN 15         // LoRa radio IRQ
+#define LORSBW 62e3
+#define LORSPF 9
+#define LORFRQ 868E6
 
 #include "DHT.h"
 #include "CRC16.h"
@@ -30,7 +33,7 @@ unsigned long yellowInterval = 1000;
 unsigned long lastYellowTime = 200;
 boolean yellowLed = false;
 boolean redLed = false;
-const long loraFreq = 868E6;  // LoRa Frequency
+const long loraFreq = LORFRQ;  // LoRa Frequency
 
 
 struct LoraDataHeader
@@ -41,6 +44,8 @@ struct LoraDataHeader
   int16_t igatewayAddr;
   int16_t iwatchdog;
   int16_t inewData;  
+  int16_t irssi;  
+  int16_t isnr;  
 }; 
 struct LoraData
 {
@@ -61,10 +66,10 @@ union LoraNode
     LoraDataHeader header;
     LoraData data;
   };
-  uint8_t buffer[28];
+  uint8_t buffer[32];
 };
 LoraNode loraNode;
-uint8_t sizeOfLoraNode = 28;
+uint8_t sizeOfLoraNode = 32;
 
 void setup() 
 {
@@ -100,6 +105,8 @@ void setup()
   loraNode.header.inodeAddr = NODEADDRESS;
   loraNode.header.igatewayAddr = GATEWAYADDRESS;
   loraNode.header.iwatchdog = 0;
+  loraNode.header.irssi = 0;  
+  loraNode.header.isnr = 0;  
   loraNode.data.imode = 0;
   loraNode.data.ipubInterval = 100;
   loraNode.data.itemp = 0;
@@ -128,6 +135,8 @@ void setup()
     if (printDiagnostics) Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }
+  LoRa.setSpreadingFactor(LORSPF);
+  LoRa.setSignalBandwidth(LORSBW);
   if (printDiagnostics)
   {
     Serial.println("LoRa init succeeded.");
@@ -237,6 +246,8 @@ void loop()
     digitalWrite(GRNPIN, greenLed);
     lastGreenTime = nowTime;
     lastYellowTime = nowTime;
+    loraNode.header.irssi = 0;  
+    loraNode.header.isnr = 0;  
     LoRa_sendMessage(loraNode.buffer, sizeOfLoraNode);
     
   }
@@ -275,7 +286,13 @@ void onReceive(int packetSize)
   }
   if (numBytes != sizeOfLoraNode)
   {
-    if (printDiagnostics) Serial.println("LoRa bytes do not match");
+    if (printDiagnostics)
+    {
+      Serial.print("LoRa bytes do not match. Bytes Received: ");
+      Serial.print(numBytes);
+      Serial.print(", Bytes expected: ");
+      Serial.println(sizeOfLoraNode);
+    }
     return;
   }
   
@@ -287,19 +304,37 @@ void onReceive(int packetSize)
   uint16_t crcCalc = crc.calc();
   if (crcCalc != loraNodeReceive.header.icrc) 
   {
-    if (printDiagnostics) Serial.println("LoRa CRC does not match");
+    if (printDiagnostics)
+    {
+      Serial.print("LoRa CRC does not match. CRC Received: ");
+      Serial.print(loraNodeReceive.header.icrc);
+      Serial.print(", CRC expected: ");
+      Serial.println(crcCalc);
+    }
     return;
   }
 
   if (loraNodeReceive.header.igatewayAddr != GATEWAYADDRESS) 
   {
-    if (printDiagnostics) Serial.println("LoRa Gateway address do not match");
+    if (printDiagnostics)
+    {
+      Serial.println("LoRa Gateway address do not match. Addr Received: ");
+      Serial.print(loraNodeReceive.header.igatewayAddr);
+      Serial.print(", Addr expected: ");
+      Serial.println(GATEWAYADDRESS);
+    }
     return;
   }
   
   if (loraNodeReceive.header.inodeAddr != NODEADDRESS) 
   {
-    if (printDiagnostics) Serial.println("LoRa Node address do not match");
+    if (printDiagnostics)
+    {
+      Serial.println("LoRa Node address do not match. Addr Received: ");
+      Serial.print(loraNodeReceive.header.inodeAddr);
+      Serial.print(", Addr expected: ");
+      Serial.println(NODEADDRESS);
+    }
     return;
   }
 
