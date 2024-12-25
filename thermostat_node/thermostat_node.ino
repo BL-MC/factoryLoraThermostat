@@ -1,6 +1,7 @@
-boolean printDiagnostics = false;
-
-#define NODEADDRESS 10
+bool core1_separate_stack = true;
+#define BLINKY_DIAG         false
+#define NODE_DIAG         false
+#define NODEADDRESS 11
 #define GATEWAYADDRESS 10
 #define DHTPIN 13
 #define REDPIN 10
@@ -15,13 +16,10 @@ boolean printDiagnostics = false;
 #define LORSPF 9
 #define LORFRQ 868E6
 
-#include "DHT.h"
-#include "CRC16.h"
-#include <SPI.h>
-#include <LoRa.h>
-
+#include <BlinkyLoraNode.h>
+#include <DHT.h>
 DHT     dht(DHTPIN, DHTTYPE);
-CRC16   crc;
+
 unsigned long lastPublishTime;
 unsigned long publishInterval = 2000;
 unsigned long lastRelayTime;
@@ -33,21 +31,8 @@ unsigned long yellowInterval = 1000;
 unsigned long lastYellowTime = 200;
 boolean yellowLed = false;
 boolean redLed = false;
-const long loraFreq = LORFRQ;  // LoRa Frequency
 
-
-struct LoraDataHeader
-{
-  uint16_t icrc;
-  int16_t istate;
-  int16_t inodeAddr;
-  int16_t igatewayAddr;
-  int16_t iwatchdog;
-  int16_t inewData;  
-  int16_t irssi;  
-  int16_t isnr;  
-}; 
-struct LoraData
+struct NodeData
 {
   int16_t imode;           //  0=OFF, 1=ON, 2=AUTO;
   int16_t ipubInterval;    //  0.10 sec
@@ -58,27 +43,32 @@ struct LoraData
   int16_t iwindowTemp;     //  0.01 degC
   int16_t irelayInterval;  //  0.10 sec
 }; 
+NodeData nodeData;
+NodeData nodeReceivedData;
     
-union LoraNode
+void setupLora()
 {
-  struct
+  if (BLINKY_DIAG > 0)
   {
-    LoraDataHeader header;
-    LoraData data;
-  };
-  uint8_t buffer[32];
-};
-LoraNode loraNode;
-uint8_t sizeOfLoraNode = 32;
+     Serial.begin(9600);
+     delay(10000);
+  }
+  BlinkyLoraNode.begin(sizeof(nodeData), BLINKY_DIAG, NODEADDRESS, GATEWAYADDRESS, CHSPIN, RSTPIN, IRQPIN, LORFRQ, LORSPF, LORSBW);
+}
 
-void setup() 
+void setupNode() 
 {
+  if (NODE_DIAG > 0)
+  {
+     Serial.begin(9600);
+     delay(10000);
+  }
+  
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(REDPIN, OUTPUT);
   pinMode(YELPIN, OUTPUT);
   pinMode(GRNPIN, OUTPUT);
   pinMode(RLYPIN, OUTPUT);
-  if (printDiagnostics) Serial.begin(9600);
   for (int ii = 0; ii < 25; ++ii)
   {
     digitalWrite(LED_BUILTIN, HIGH);   
@@ -100,61 +90,24 @@ void setup()
   digitalWrite(RLYPIN, LOW); 
   dht.begin();
 
-  loraNode.header.istate = 1;
-  loraNode.header.inewData = 0;
-  loraNode.header.inodeAddr = NODEADDRESS;
-  loraNode.header.igatewayAddr = GATEWAYADDRESS;
-  loraNode.header.iwatchdog = 0;
-  loraNode.header.irssi = 0;  
-  loraNode.header.isnr = 0;  
-  loraNode.data.imode = 0;
-  loraNode.data.ipubInterval = 100;
-  loraNode.data.itemp = 0;
-  loraNode.data.ihumid = 0;
-  loraNode.data.irelay = 0;
-  loraNode.data.isetTemp = 1000;
-  loraNode.data.iwindowTemp = 200;
-  loraNode.data.irelayInterval = 600;
-  publishInterval = loraNode.data.ipubInterval * 100;
+  nodeData.imode = 0;
+  nodeData.ipubInterval = 100;
+  nodeData.itemp = 0;
+  nodeData.ihumid = 0;
+  nodeData.irelay = 0;
+  nodeData.isetTemp = 1000;
+  nodeData.iwindowTemp = 200;
+  nodeData.irelayInterval = 600;
+  publishInterval = nodeData.ipubInterval * 100;
   lastPublishTime = millis();
-  relayInterval = loraNode.data.irelayInterval * 100;
+  relayInterval = nodeData.irelayInterval * 100;
   lastRelayTime = lastPublishTime;
   lastGreenTime = lastPublishTime;
-
-  crc.restart();
-  for (int ii = 2; ii < sizeOfLoraNode; ii++)
-  {
-    crc.add(loraNode.buffer[ii]);
-  }
-  loraNode.header.icrc = crc.calc();
-
-  LoRa.setPins(CHSPIN, RSTPIN, IRQPIN);
-
-  if (!LoRa.begin(loraFreq)) 
-  {
-    if (printDiagnostics) Serial.println("LoRa init failed. Check your connections.");
-    while (true);                       // if failed, do nothing
-  }
-  LoRa.setSpreadingFactor(LORSPF);
-  LoRa.setSignalBandwidth(LORSBW);
-  if (printDiagnostics)
-  {
-    Serial.println("LoRa init succeeded.");
-    Serial.println();
-    Serial.println("LoRa Simple Node");
-    Serial.println("Only receive messages from gateways");
-    Serial.println("Tx: invertIQ disable");
-    Serial.println("Rx: invertIQ enable");
-    Serial.println();    
-  }
-  LoRa.onReceive(onReceive);
-  LoRa.onTxDone(onTxDone);
-  LoRa_rxMode();
-  
 }
 
-void loop() 
+void loopNode() 
 {
+
   unsigned long nowTime = millis();
   if (greenLed)
   {
@@ -179,13 +132,13 @@ void loop()
     float temp = dht.readTemperature(); 
     if (isnan(humid) || isnan(temp)) 
     {
-      if (printDiagnostics) Serial.println(F("Failed to read from DHT sensor!"));
+      if (NODE_DIAG) Serial.println(F("Failed to read from DHT sensor!"));
       humid = 0;
       temp = -20;
     }
     else
     {
-      if (printDiagnostics) 
+      if (NODE_DIAG) 
       {
         Serial.print(F("Humidity: "));
         Serial.print(humid);
@@ -196,36 +149,36 @@ void loop()
     }
     humid = humid * 100;
     temp = temp * 100;
-    loraNode.data.ihumid = (int16_t) humid;
-    loraNode.data.itemp  = (int16_t) temp;
-    if (loraNode.data.imode == 0)
+    nodeData.ihumid = (int16_t) humid;
+    nodeData.itemp  = (int16_t) temp;
+    if (nodeData.imode == 0)
     {
       digitalWrite(RLYPIN, LOW);
       digitalWrite(REDPIN, LOW);
-      loraNode.data.irelay = 0;
+      nodeData.irelay = 0;
     }
-    if (loraNode.data.imode == 1) 
+    if (nodeData.imode == 1) 
     {
       digitalWrite(RLYPIN, HIGH);
       digitalWrite(REDPIN, HIGH);
-      loraNode.data.irelay = 1;
+      nodeData.irelay = 1;
     }
-    if (loraNode.data.imode == 2)
+    if (nodeData.imode == 2)
     {
       int16_t irelay = 0;
       if (((nowTime - lastRelayTime) > relayInterval) && (humid > 0))
       {
-        if (loraNode.data.itemp > (loraNode.data.isetTemp + loraNode.data.iwindowTemp)) irelay = 0;
-        if (loraNode.data.itemp < (loraNode.data.isetTemp - loraNode.data.iwindowTemp)) irelay = 1;
-        if (irelay != loraNode.data.irelay)
+        if (nodeData.itemp > (nodeData.isetTemp + nodeData.iwindowTemp)) irelay = 0;
+        if (nodeData.itemp < (nodeData.isetTemp - nodeData.iwindowTemp)) irelay = 1;
+        if (irelay != nodeData.irelay)
         {
-          loraNode.data.irelay = irelay;
-          if (loraNode.data.irelay == 0)
+          nodeData.irelay = irelay;
+          if (nodeData.irelay == 0)
           {
             digitalWrite(RLYPIN, LOW);
             digitalWrite(REDPIN, LOW);
           }
-          if (loraNode.data.irelay == 1)
+          if (nodeData.irelay == 1)
           {
             digitalWrite(RLYPIN, HIGH);
             digitalWrite(REDPIN, HIGH);
@@ -234,137 +187,44 @@ void loop()
         }
       }
     }
-    loraNode.header.iwatchdog = loraNode.header.iwatchdog + 1;
-    if (loraNode.header.iwatchdog > 32765) loraNode.header.iwatchdog = 0;
-    crc.restart();
-    for (int ii = 2; ii < sizeOfLoraNode; ii++)
-    {
-      crc.add(loraNode.buffer[ii]);
-    }
-    loraNode.header.icrc = crc.calc();
+    boolean successful = BlinkyLoraNode.publishNodeData((uint8_t*) &nodeData, false);
     greenLed = true;
     digitalWrite(GRNPIN, greenLed);
     lastGreenTime = nowTime;
     lastYellowTime = nowTime;
-    loraNode.header.irssi = 0;  
-    loraNode.header.isnr = 0;  
-    LoRa_sendMessage(loraNode.buffer, sizeOfLoraNode);
+  }
+  if (BlinkyLoraNode.retrieveGatewayData((uint8_t*) &nodeReceivedData) )
+  {
+    nodeData.imode            = nodeReceivedData.imode;
+    nodeData.ipubInterval    = nodeReceivedData.ipubInterval;
+    nodeData.isetTemp        = nodeReceivedData.isetTemp;
+    nodeData.iwindowTemp     = nodeReceivedData.iwindowTemp;
+    nodeData.irelayInterval  = nodeReceivedData.irelayInterval;
+      
+    if (NODE_DIAG) 
+    {
+      Serial.println(" ");
+      Serial.println("New Setting received");
+      Serial.print("imode: ");
+      Serial.println(nodeData.imode);
+      Serial.print("ipubInterval: ");
+      Serial.println(nodeData.ipubInterval);
+      Serial.print("isetTemp: ");
+      Serial.println(nodeData.isetTemp);
+      Serial.print("iwindowTemp: ");
+      Serial.println(nodeData.iwindowTemp);
+      Serial.print("irelayInterval: ");
+      Serial.println(nodeData.irelayInterval);
+    }
+
+    publishInterval = nodeData.ipubInterval * 100;
+    relayInterval = nodeData.irelayInterval * 100;
+    lastPublishTime = 1;
+    
+    yellowLed = true;
+    digitalWrite(YELPIN, yellowLed);
+    lastYellowTime = millis();
     
   }
-}
 
-void LoRa_rxMode()
-{
-  LoRa.enableInvertIQ();                // active invert I and Q signals
-  LoRa.receive();                       // set receive mode
-}
-
-void LoRa_txMode()
-{
-  LoRa.idle();                          // set standby mode
-  LoRa.disableInvertIQ();               // normal mode
-}
-
-void LoRa_sendMessage(uint8_t *buffer, uint8_t size) 
-{
-  LoRa_txMode();                        // set tx mode
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(buffer, (size_t) size);    // add payload
-  LoRa.endPacket(true);                 // finish packet and send it
-}
-
-void onReceive(int packetSize) 
-{
-  uint8_t numBytes = 0;
-  LoraNode loraNodeReceive;
-  
-  if (printDiagnostics) Serial.print("Received LoRa data at: ");
-  if (printDiagnostics) Serial.println(millis());
-  while (LoRa.available() )
-  {
-    numBytes = LoRa.readBytes(loraNodeReceive.buffer, sizeOfLoraNode);
-  }
-  if (numBytes != sizeOfLoraNode)
-  {
-    if (printDiagnostics)
-    {
-      Serial.print("LoRa bytes do not match. Bytes Received: ");
-      Serial.print(numBytes);
-      Serial.print(", Bytes expected: ");
-      Serial.println(sizeOfLoraNode);
-    }
-    return;
-  }
-  
-  crc.restart();
-  for (int ii = 2; ii < sizeOfLoraNode; ii++)
-  {
-    crc.add(loraNodeReceive.buffer[ii]);
-  }
-  uint16_t crcCalc = crc.calc();
-  if (crcCalc != loraNodeReceive.header.icrc) 
-  {
-    if (printDiagnostics)
-    {
-      Serial.print("LoRa CRC does not match. CRC Received: ");
-      Serial.print(loraNodeReceive.header.icrc);
-      Serial.print(", CRC expected: ");
-      Serial.println(crcCalc);
-    }
-    return;
-  }
-
-  if (loraNodeReceive.header.igatewayAddr != GATEWAYADDRESS) 
-  {
-    if (printDiagnostics)
-    {
-      Serial.println("LoRa Gateway address do not match. Addr Received: ");
-      Serial.print(loraNodeReceive.header.igatewayAddr);
-      Serial.print(", Addr expected: ");
-      Serial.println(GATEWAYADDRESS);
-    }
-    return;
-  }
-  
-  if (loraNodeReceive.header.inodeAddr != NODEADDRESS) 
-  {
-    if (printDiagnostics)
-    {
-      Serial.println("LoRa Node address do not match. Addr Received: ");
-      Serial.print(loraNodeReceive.header.inodeAddr);
-      Serial.print(", Addr expected: ");
-      Serial.println(NODEADDRESS);
-    }
-    return;
-  }
-
-  if (printDiagnostics)
-  {
-    Serial.print("Node Receive: ");
-    Serial.println(numBytes);
-    Serial.print("icrc           : ");
-    Serial.println(loraNodeReceive.header.icrc);
-  }
-  if (loraNode.header.istate == 0) loraNode.data.imode = loraNodeReceive.data.imode;
-  loraNode.data.ipubInterval    = loraNodeReceive.data.ipubInterval;
-  loraNode.data.isetTemp        = loraNodeReceive.data.isetTemp;
-  loraNode.data.iwindowTemp     = loraNodeReceive.data.iwindowTemp;
-  loraNode.data.irelayInterval  = loraNodeReceive.data.irelayInterval;
-  loraNode.header.istate = 0;
-
-  
-  publishInterval = loraNode.data.ipubInterval * 100;
-  relayInterval = loraNode.data.irelayInterval * 100;
-  lastPublishTime = 1;
-  
-  yellowLed = true;
-  digitalWrite(YELPIN, yellowLed);
-  lastYellowTime = millis();
-  
-}
-
-void onTxDone() 
-{
-  if (printDiagnostics) Serial.println("TxDone");
-  LoRa_rxMode();
 }

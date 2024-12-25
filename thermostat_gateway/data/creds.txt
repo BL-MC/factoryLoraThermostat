@@ -1,10 +1,10 @@
 {Blinky-Lite}
 {SwedishChef}
-{192.168.0.101}
-{blinky-lite-box-01}
+{hub.bl-mc.com}
+{bl-autoseum}
 {areallybadpassword}
-{blinky-lite-box-01}
+{bl-autoseum}
 {lora-gateway}
 {10}
-{cube}
+{blinky-hub}
 
