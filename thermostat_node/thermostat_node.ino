@@ -102,7 +102,6 @@ void setupNode()
   lastPublishTime = millis();
   relayInterval = nodeData.irelayInterval * 100;
   lastRelayTime = lastPublishTime;
-  lastGreenTime = lastPublishTime;
 }
 
 void loopNode() 
@@ -111,7 +110,7 @@ void loopNode()
   unsigned long nowTime = millis();
   if (greenLed)
   {
-    if ((nowTime - lastGreenTime) > greenInterval)
+    if (!BlinkyLoraNode.publishNodeDataInProgress())
     {
       greenLed = false;
       digitalWrite(GRNPIN, greenLed);
@@ -190,8 +189,8 @@ void loopNode()
     boolean successful = BlinkyLoraNode.publishNodeData((uint8_t*) &nodeData, false);
     greenLed = true;
     digitalWrite(GRNPIN, greenLed);
-    lastGreenTime = nowTime;
     lastYellowTime = nowTime;
+    delay(50);
   }
   if (BlinkyLoraNode.retrieveGatewayData((uint8_t*) &nodeReceivedData) )
   {
